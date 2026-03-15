@@ -6,7 +6,15 @@ const fs = require('fs');
 const app = express();
 const PORT = 3000;
 
-// ダウンロード保存先フォルダを確保
+const LOG_LEVEL = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'error' : 'info');
+const logInfo = (...args) => {
+    if (LOG_LEVEL === 'info') console.log(...args);
+};
+const logError = (...args) => {
+    console.error(...args);
+};
+
+// ダウンロード保存先を用意
 const downloadsDir = path.join(__dirname, 'public', 'downloads');
 if (!fs.existsSync(downloadsDir)) {
     fs.mkdirSync(downloadsDir, { recursive: true });
@@ -17,7 +25,7 @@ app.use(express.static('public'));
 
 const PROXY_URL = process.env.YT_DLP_PROXY || "http://ytproxy-siawaseok.duckdns.org:3007";
 
-// --- 補助関数: yt-dlpの実行 ---
+// yt-dlp 実行
 function runYtDlp(args) {
     return new Promise((resolve) => {
         const ytDlp = spawn('yt-dlp', args);
@@ -33,39 +41,36 @@ function runYtDlp(args) {
     });
 }
 
-// --- ① 画質一覧を取得するAPI ---
+// 画質一覧を取得
 app.post('/api/info', async (req, res) => {
     const { url, browserSupport } = req.body;
     if (!url) return res.status(400).json({ error: 'URLが必要です' });
 
-    console.log(`情報取得開始: ${url}`);
-    
-    // YouTubeかどうかを判定
+    logInfo(`情報取得開始: ${url}`);
+
+    // YouTube判定
     const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
     
     let result;
     let usedProxy = false;
 
     if (isYouTube) {
-        // YouTubeは初手プロキシ
-        console.log(`[YouTube判定] プロキシを使用して取得します`);
+        logInfo(`[YouTube] プロキシ使用で取得`);
         result = await runYtDlp(['--proxy', PROXY_URL, '--dump-json', url]);
         usedProxy = true;
     } else {
-        // それ以外は初手プロキシなし
-        console.log(`[通常判定] プロキシなしで取得を試みます`);
+        logInfo(`[通常] プロキシなしで取得`);
         result = await runYtDlp(['--dump-json', url]);
         
-        // 失敗したらプロキシありでリトライ
         if (result.code !== 0) {
-            console.log(`[エラー検知] 直アクセスに失敗しました。プロキシを使用して再試行します...`);
+            logInfo(`[再試行] プロキシ使用`);
             result = await runYtDlp(['--proxy', PROXY_URL, '--dump-json', url]);
             usedProxy = true;
         }
     }
 
     if (result.code !== 0) {
-        console.error(`[yt-dlp 取得エラー (プロキシ使用: ${usedProxy})]:`, result.errorOutput);
+        logError(`[yt-dlp 取得エラー (プロキシ使用: ${usedProxy})]:`, result.errorOutput);
         return res.status(500).json({ 
             error: '動画情報の取得に失敗しました。', 
             details: `プロキシ使用: ${usedProxy}\n${result.errorOutput}` 
@@ -118,9 +123,9 @@ app.post('/api/info', async (req, res) => {
     }
 });
 
-// --- ② ダウンロード処理とSSE ---
+// ダウンロードとSSE
 app.get('/api/download-stream', (req, res) => {
-    const { url, format, proxy } = req.query; // info APIで決まったプロキシ設定を受け取る
+    const { url, format, proxy } = req.query;
     if (!url || !format) return res.status(400).end();
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -130,7 +135,7 @@ app.get('/api/download-stream', (req, res) => {
     const fileId = Date.now().toString();
     const useProxy = proxy === 'true';
     
-    console.log(`ダウンロード開始: ${url} (プロキシ使用: ${useProxy})`);
+    logInfo(`ダウンロード開始: ${url} (プロキシ使用: ${useProxy})`);
 
     const args = [];
     if (useProxy) {
@@ -146,16 +151,24 @@ app.get('/api/download-stream', (req, res) => {
     const ytDlp = spawn('yt-dlp', args);
     const progressRegex = /\[download\]\s+([0-9.]+)%/;
 
-    ytDlp.stdout.on('data', (data) => {
+    const handleProgress = (data) => {
         const text = data.toString();
         const match = text.match(progressRegex);
         if (match) {
             res.write(`data: ${JSON.stringify({ type: 'progress', percent: parseFloat(match[1]) })}\n\n`);
+            return true;
         }
+        return false;
+    };
+
+    ytDlp.stdout.on('data', (data) => {
+        handleProgress(data);
     });
 
     ytDlp.stderr.on('data', (data) => {
-        console.error(`[FFmpeg/yt-dlpログ]: ${data.toString().trim()}`);
+        if (!handleProgress(data)) {
+            logError(`[yt-dlpログ]: ${data.toString().trim()}`);
+        }
     });
 
     ytDlp.on('close', (code) => {
@@ -177,24 +190,23 @@ app.get('/api/download-stream', (req, res) => {
     });
 });
 
-// --- ③ 定期的な自動クリーンアップ処理（15分経過したファイルを削除） ---
+// 定期クリーンアップ（15分経過したファイルを削除）
 const CLEANUP_INTERVAL = 5 * 60 * 1000; 
 const FILE_MAX_AGE = 15 * 60 * 1000;    
 
 setInterval(() => {
     fs.readdir(downloadsDir, (err, files) => {
-        if (err) return console.error('ディレクトリの読み取りエラー:', err);
+        if (err) return logError('ディレクトリの読み取りエラー:', err);
 
         const now = Date.now();
         files.forEach(file => {
             const filePath = path.join(downloadsDir, file);
             fs.stat(filePath, (err, stats) => {
-                if (err) return console.error(`ファイル情報取得エラー (${file}):`, err);
+                if (err) return logError(`ファイル情報取得エラー (${file}):`, err);
 
                 if (now - stats.mtimeMs > FILE_MAX_AGE) {
                     fs.unlink(filePath, err => {
-                        if (err) console.error(`削除エラー (${file}):`, err);
-                        else console.log(`🧹 自動削除しました (15分経過): ${file}`);
+                        if (err) logError(`削除エラー (${file}):`, err);
                     });
                 }
             });
@@ -203,6 +215,6 @@ setInterval(() => {
 }, CLEANUP_INTERVAL);
 
 app.listen(PORT, () => {
-    console.log(`Server running: http://localhost:${PORT}`);
-    console.log(`自動お掃除機能が有効です（15分経過したファイルを自動削除します）`);
+    logInfo(`Server running: http://localhost:${PORT}`);
+    logInfo(`自動お掃除機能が有効です（15分経過したファイルを自動削除します）`);
 });
