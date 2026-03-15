@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>しあtube-Video Downloader</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --primary-hover: #357abd;
+            --bg-color: #f4f7f9;
+            --card-bg: #ffffff;
+            --text-main: #333;
+            --text-sub: #666;
+            --error-color: #e74c3c;
+            --success-color: #2ecc71;
+            --border-radius: 12px;
+            --shadow: 0 8px 30px rgba(0,0,0,0.05);
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 500px;
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+        }
+
+        h1 {
+            font-size: 24px;
+            text-align: center;
+            margin-bottom: 30px;
+            color: var(--primary-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            padding: 14px;
+            border: 2px solid #eee;
+            border-radius: var(--border-radius);
+            font-size: 16px;
+            transition: border-color 0.3s;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary-color);
+        }
+
+        button {
+            cursor: pointer;
+            padding: 14px 20px;
+            border: none;
+            border-radius: var(--border-radius);
+            font-weight: bold;
+            font-size: 16px;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-fetch {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-fetch:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-download {
+            background-color: var(--success-color);
+            color: white;
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        .btn-download:hover {
+            opacity: 0.9;
+        }
+
+        #infoStatus {
+            font-size: 14px;
+            margin: 15px 0;
+            text-align: center;
+            min-height: 20px;
+        }
+
+        .section {
+            border-top: 1px solid #eee;
+            padding-top: 25px;
+            margin-top: 10px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        #videoTitle {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: var(--text-main);
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        select {
+            width: 100%;
+            padding: 12px;
+            border-radius: var(--border-radius);
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+            font-size: 15px;
+            outline: none;
+        }
+
+        /* Progress Styling */
+        #progressContainer {
+            margin-top: 25px;
+        }
+
+        progress {
+            width: 100%;
+            height: 12px;
+            border-radius: 6px;
+            overflow: hidden;
+            appearance: none;
+        }
+
+        progress::-webkit-progress-bar {
+            background-color: #eee;
+        }
+
+        progress::-webkit-progress-value {
+            background-color: var(--primary-color);
+            transition: width 0.3s ease;
+        }
+
+        #progressText {
+            font-size: 13px;
+            color: var(--text-sub);
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        .hidden { display: none; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #downloadLink {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            padding: 15px;
+            background: #27ae60;
+            color: white;
+            text-decoration: none;
+            border-radius: var(--border-radius);
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3);
+        }
+
+        /* Error detail box */
+        .error-detail {
+            background: #fff5f5;
+            color: var(--error-color);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            border: 1px solid #ffeded;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1><i class="fas fa-cloud-download-alt"></i> Downloader</h1>
+    
+    <div class="input-group">
+        <input type="text" id="videoUrl" placeholder="動画のURLを貼り付けてください">
+        <button class="btn-fetch" onclick="fetchFormats()">
+            <i class="fas fa-search"></i> 画質を取得
+        </button>
+    </div>
+
+    <div id="infoStatus"></div>
+
+    <div id="downloadSection" class="section hidden">
+        <div id="videoTitle"></div>
+        <select id="formatSelect"></select>
+        
+        <button class="btn-download" onclick="startDownload()">
+            <i class="fas fa-cog fa-spin" id="gearIcon" style="display:none;"></i>
+            <span>処理を開始する</span>
+        </button>
+        
+        <div id="progressContainer" class="hidden">
+            <progress id="progressBar" value="0" max="100"></progress>
+            <p id="progressText">準備中...</p>
+        </div>
+
+        <div id="resultContainer" class="hidden">
+            <a id="downloadLink" href="#" download target="_blank">
+                <i class="fas fa-download"></i> ファイルを保存する
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentUrl = '';
+
+    async function fetchFormats() {
+        const url = document.getElementById('videoUrl').value;
+        if (!url) return;
+
+        currentUrl = url;
+        const statusEl = document.getElementById('infoStatus');
+        const downloadSection = document.getElementById('downloadSection');
+        const resultContainer = document.getElementById('resultContainer');
+
+        statusEl.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> 解析中...';
+        statusEl.style.color = "var(--text-sub)";
+        downloadSection.classList.add('hidden');
+        resultContainer.classList.add('hidden');
+
+        const videoElement = document.createElement('video');
+        const browserSupport = {
+            av1: videoElement.canPlayType('video/mp4; codecs="av01.0.05M.08"') !== '' || 
+                 videoElement.canPlayType('video/webm; codecs="av01.0.05M.08"') !== '',
+            vp9: videoElement.canPlayType('video/webm; codecs="vp9"') !== '',
+            h264: videoElement.canPlayType('video/mp4; codecs="avc1.42E01E"') !== ''
+        };
+
+        try {
+            const response = await fetch('/api/info', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url, browserSupport })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                statusEl.innerText = "";
+                document.getElementById('videoTitle').innerHTML = `<strong>動画:</strong> ${data.title}`;
+                
+                const select = document.getElementById('formatSelect');
+                select.innerHTML = '';
+
+                const uniqueFormats = {};
+                data.formats.forEach(f => {
+                    if (f.resolution === '自動解析' || f.id === 'best') {
+                        uniqueFormats['best'] = { ...f, shortSide: '自動' };
+                        return;
+                    }
+                    const resParts = (f.resolution || '').split('x');
+                    if (resParts.length !== 2) return;
+                    const height = Math.min(parseInt(resParts[0]), parseInt(resParts[1]));
+                    if (!uniqueFormats[height]) uniqueFormats[height] = { ...f, shortSide: height, isVertical: parseInt(resParts[1]) > parseInt(resParts[0]) };
+                });
+
+                const sortedKeys = Object.keys(uniqueFormats).sort((a, b) => (a === 'best' ? -1 : b === 'best' ? 1 : b - a));
+                
+                sortedKeys.forEach(key => {
+                    const f = uniqueFormats[key];
+                    const option = document.createElement('option');
+                    option.value = f.id;
+                    let label = key === 'best' ? '🚀 最高画質 (自動)' : `${key}p`;
+                    if (f.isVertical) label += ' 📱縦型';
+                    option.text = label;
+                    select.appendChild(option);
+                });
+
+                downloadSection.classList.remove('hidden');
+            } else {
+                statusEl.innerHTML = `<div class="error-detail">⚠️ エラー: ${data.error}</div>`;
+            }
+        } catch (error) {
+            statusEl.innerHTML = `<div class="error-detail">通信エラーが発生しました。</div>`;
+        }
+    }
+
+    function startDownload() {
+        const formatId = document.getElementById('formatSelect').value;
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const resultContainer = document.getElementById('resultContainer');
+        const gearIcon = document.getElementById('gearIcon');
+
+        progressContainer.classList.remove('hidden');
+        resultContainer.classList.add('hidden');
+        gearIcon.style.display = 'inline-block';
+        progressBar.value = 0;
+        
+        let currentPhase = '映像';
+        let lastPercent = 0;
+
+        const sseUrl = `/api/download-stream?url=${encodeURIComponent(currentUrl)}&format=${formatId}`;
+        const eventSource = new EventSource(sseUrl);
+
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'progress') {
+                if (lastPercent > 80 && data.percent < 20) currentPhase = '音声';
+                lastPercent = data.percent;
+                progressBar.value = data.percent;
+                progressText.innerText = `${currentPhase}を処理中... ${data.percent}%`;
+            } 
+            else if (data.type === 'complete') {
+                progressText.innerHTML = '<span style="color:var(--success-color)">✨ 完了しました！</span>';
+                document.getElementById('downloadLink').href = data.downloadUrl;
+                resultContainer.classList.remove('hidden');
+                gearIcon.style.display = 'none';
+                eventSource.close();
+            }
+            else if (data.type === 'error') {
+                progressText.innerText = `エラー: ${data.message}`;
+                gearIcon.style.display = 'none';
+                eventSource.close();
+            }
+        };
+
+        eventSource.onerror = () => {
+            progressText.innerText = 'サーバーとの通信が切断されました。';
+            eventSource.close();
+        };
+    }
+</script>
+
+</body>
+</html>

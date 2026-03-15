@@ -1,0 +1,17 @@
+{
+  "name": "my-downloader",
+  "version": "1.0.0",
+  "description": "YouTube/SNS Downloader with SSE",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "setup-tools": "sudo apt-get update && sudo apt-get install -y ffmpeg python3 && sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && sudo chmod a+rx /usr/local/bin/yt-dlp"
+  },
+  "dependencies": {
+    "express": "^4.19.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
